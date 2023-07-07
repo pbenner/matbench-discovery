@@ -23,3 +23,23 @@ The directory contains the following files, which must be executed in the given 
 1. `train_data.py`: Export Matbench Discovery training data to ALIGNN compatible format. This script outputs training data in the directory `data_train`. In addition, a small test data set is set apart and stored in the directory `data_test`
 1. `train_alignn.py`: Train an ALIGNN model on previously exported data. The resulting model is stored in the directory `data-train-result`
 1. `test_alignn.py`: Test a trained ALIGNN model on the WBM data. Generates `2023-06-03-mp-e-form-alignn-wbm-IS2RE.csv.gz`.
+
+## ALIGNN-FF formation energy predictions on relaxed WBM test set
+
+The patch `alignn-ff-2023.07.05.patch` fixes the following issue:
+```bash
+Traceback (most recent call last):
+  File "alignn_relax.py", line 96, in <module>
+  File "alignn_relax.py", line 88, in alignn_relax
+  File "../alignn/ff/ff.py", line 310, in optimize_atoms
+  File "../alignn/lib/python3.9/site-packages/ase/optimize/optimize.py", line 269, in run
+  File "../alignn/lib/python3.9/site-packages/ase/optimize/optimize.py", line 156, in run
+  File "../alignn/lib/python3.9/site-packages/ase/optimize/optimize.py", line 129, in irun
+  File "../alignn/lib/python3.9/site-packages/ase/optimize/optimize.py", line 108, in call_observers
+  File "../alignn/lib/python3.9/site-packages/ase/io/trajectory.py", line 132, in write
+  File "../alignn/lib/python3.9/site-packages/ase/io/trajectory.py", line 156, in _write_atoms
+  File "../alignn/lib/python3.9/site-packages/ase/io/trajectory.py", line 381, in write_atoms
+  File "../alignn/lib/python3.9/site-packages/ase/io/ulm.py", line 400, in write
+  File "../alignn/lib/python3.9/site-packages/ase/io/ulm.py", line 325, in fill
+OSError: [Errno 24] Too many open files
+```

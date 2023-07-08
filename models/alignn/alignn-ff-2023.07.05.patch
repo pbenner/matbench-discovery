@@ -1,5 +1,5 @@
 diff --git a/alignn/ff/ff.py b/alignn/ff/ff.py
-index 2dc916f..8ff3999 100644
+index 2dc916f..a569184 100644
 --- a/alignn/ff/ff.py
 +++ b/alignn/ff/ff.py
 @@ -46,6 +46,8 @@ from jarvis.analysis.defects.surface import Surface
@@ -11,7 +11,15 @@ index 2dc916f..8ff3999 100644
  try:
      from gpaw import GPAW, PW
  except Exception:
-@@ -138,8 +140,6 @@ class AlignnAtomwiseCalculator(ase.calculators.calculator.Calculator):
+@@ -62,7 +64,6 @@ __author__ = "Kamal Choudhary, Brian DeCost, Keith Butler, Lily Major"
+ def default_path():
+     """Get defaukt model path."""
+     dpath = os.path.abspath(str(os.path.join(os.path.dirname(__file__), ".")))
+-    print("model_path", dpath)
+     return dpath
+ 
+ 
+@@ -138,8 +139,6 @@ class AlignnAtomwiseCalculator(ase.calculators.calculator.Calculator):
  
          config.model.output_features = 1
  
@@ -20,7 +28,7 @@ index 2dc916f..8ff3999 100644
          if self.device is None:
              self.device = torch.device(
                  "cuda" if torch.cuda.is_available() else "cpu"
-@@ -193,6 +193,7 @@ class ForceField(object):
+@@ -193,6 +192,7 @@ class ForceField(object):
          logfile="alignn_ff.log",
          dyn=None,
          communicator=None,
@@ -28,7 +36,7 @@ index 2dc916f..8ff3999 100644
      ):
          """Intialize class."""
          self.jarvis_atoms = jarvis_atoms
-@@ -225,12 +226,13 @@ class ForceField(object):
+@@ -225,12 +225,13 @@ class ForceField(object):
          # print ('STRUCTURE PROVIDED:')
          # print (ase_to_atoms(self.atoms))
          # print ()
@@ -43,7 +51,7 @@ index 2dc916f..8ff3999 100644
              )
          )
  
-@@ -238,6 +240,7 @@ class ForceField(object):
+@@ -238,6 +239,7 @@ class ForceField(object):
          """Print info."""
          if isinstance(self.atoms, ExpCellFilter):
              self.atoms = self.atoms.atoms
@@ -51,7 +59,7 @@ index 2dc916f..8ff3999 100644
          line = ""
          try:
              line = f"time={self.dyn.get_time() / units.fs: 5.0f} fs "
-@@ -297,9 +300,9 @@ class ForceField(object):
+@@ -297,9 +299,9 @@ class ForceField(object):
              raise ValueError("Check optimizer", optimizer)
          if optimize_lattice:
              self.atoms = ExpCellFilter(self.atoms)

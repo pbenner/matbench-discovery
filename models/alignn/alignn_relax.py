@@ -1,25 +1,18 @@
 # %%
 from __future__ import annotations
 
-import json
 import os
 from importlib.metadata import version
 
 import numpy  as np
 import pandas as pd
-import torch
 import gzip
 
-from alignn.config import TrainingConfig
-from alignn.models.alignn import ALIGNN
-from alignn.pretrained import all_models, get_figshare_model
-from alignn.ff.ff import ForceField, default_path
 from pymatgen.core import Structure
 from pymatgen.io.jarvis import JarvisAtomsAdaptor
-from tqdm import tqdm
-from tqdm.contrib.concurrent import thread_map
+from pqdm.processes import pqdm
 
-from matbench_discovery import DEBUG, today
+from matbench_discovery import DEBUG
 from matbench_discovery.data import DATA_FILES, df_wbm
 # %%
 
@@ -33,6 +26,7 @@ out_dir = os.getenv("SBATCH_OUTPUT", default='2022-10-19-wbm-alignn-relaxed-stru
 
 # %%
 n_splits = 100
+n_processes_per_task = 10
 module_dir = os.path.dirname(__file__)
 # model_name = "mp_e_form_alignn"  # pre-trained by NIST
 model_name = f"{module_dir}/data-train-result/best-model.pth"
@@ -40,7 +34,6 @@ task_type = "IS2RE"
 target_col = "e_form_per_atom_mp2020_corrected"
 input_col = "initial_structure"
 id_col = "material_id"
-device = f'cuda:{task_id%4}' if torch.cuda.is_available() else "cpu"
 job_name = f"{model_name}-wbm-{task_type}{'-debug' if DEBUG else ''}"
 if task_id == 0:
     out_path = '2022-10-19-wbm-alignn-relaxed-structs.json.gz'
@@ -77,11 +70,14 @@ else:
 
 # %% Relax structures
 
-def alignn_relax(structure, ff_model_path=default_path()):
+def alignn_relax(structure):
+    # Cuda must be only initialized in child processes
+    from alignn.ff.ff import ForceField, default_path
+
     ff = ForceField(
         jarvis_atoms=JarvisAtomsAdaptor.get_atoms(Structure.from_dict(structure)),
-        model_path=ff_model_path,
-        device=device,
+        model_path=default_path(),
+        device=f'cuda:{task_id%4}' if torch.cuda.is_available() else "cpu",
         logfile='/dev/null'
     )
     # Relax structure
@@ -89,11 +85,8 @@ def alignn_relax(structure, ff_model_path=default_path()):
 
     return JarvisAtomsAdaptor.get_structure(opt).as_dict()
 
-# Convert str
-df_relaxed = pd.Series()
-
-for material_id in tqdm(df_in.index):
-    df_relaxed[material_id] = alignn_relax(df_in.loc[material_id]['initial_structure'])
+structures = [ df_in.loc[material_id]['initial_structure'] for material_id in df_in.index ]
+df_relaxed = pqdm(structures, alignn_relax, n_jobs = n_processes_per_task)
 
 df_in = df_in.assign(relaxed_structure = df_relaxed)
 
@@ -101,7 +94,5 @@ df_in = df_in.assign(relaxed_structure = df_relaxed)
 
 with gzip.open(out_path, 'wb') as f:
     df_in.to_json(f)
-
-# df_in = pd.read_json('2022-10-19-wbm-alignn-relaxed-structs.json.gz')
 
 # %%

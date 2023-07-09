@@ -96,3 +96,6 @@ with gzip.open(out_path, 'wb') as f:
     df_in.to_json(f)
 
 # %%
+# Examples of materials that take ages to converge:
+# task_id = 75, df_in.iloc[857]: wbm-3-76848
+# task_id = 75, df_in.iloc[987]: wbm-3-76978

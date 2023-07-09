@@ -73,6 +73,7 @@ else:
 def alignn_relax(structure):
     # Cuda must be only initialized in child processes
     from alignn.ff.ff import ForceField, default_path
+    import torch
 
     ff = ForceField(
         jarvis_atoms=JarvisAtomsAdaptor.get_atoms(Structure.from_dict(structure)),

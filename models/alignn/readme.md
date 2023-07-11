@@ -43,3 +43,7 @@ Traceback (most recent call last):
   File "../alignn/lib/python3.9/site-packages/ase/io/ulm.py", line 325, in fill
 OSError: [Errno 24] Too many open files
 ```
+
+To reproduce the ALIGNN relaxed predictions, run the following scripts:
+1. `alignn_relax.py`: Set the variable `n_splits` to the number of GPU compute nodes. On each compute node, set the environment variable `TASK_ID` to a value in the range 1-`n_splits`. Set the variable `n_processes_per_task` to the number of processes on a single node. For 48 cpu cores with 4 GPUs a good setting is to use 10 processes.
+2. `test_alignn_relaxed.py`: Read the relaxed structures and compute predictions. Set the variable `n_splits` accordingly.

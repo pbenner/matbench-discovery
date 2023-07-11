@@ -30,8 +30,9 @@ module_dir = os.path.dirname(__file__)
 
 
 # %%
-model_name = "mp_e_form_alignnn"  # pre-trained by NIST
-# model_name = f"{module_dir}/data-train-result/best-model.pth"
+n_splits = 100
+#model_name = "mp_e_form_alignnn"  # pre-trained by NIST
+model_name = f"{module_dir}/data-train-result/best-model.pth"
 task_type = "IS2RE"
 target_col = "e_form_per_atom_mp2020_corrected"
 input_col = "initial_structure"
@@ -62,15 +63,12 @@ else:
 # %% Load data
 def import_relaxed_data():
     df_relaxed = pd.DataFrame()
-    for task_id in range(1, 101):
+    for task_id in range(1, n_splits+1):
         in_path  = f'2022-10-19-wbm-alignn-relaxed-structs/batch-{task_id}.json.gz'
 
         if not os.path.exists(in_path):
-            #raise FileNotFoundError(
-            #    errno.ENOENT, os.strerror(errno.ENOENT), in_path)
-
-            print(f'batch {task_id} does not exist')
-            continue
+            raise FileNotFoundError(
+                errno.ENOENT, os.strerror(errno.ENOENT), in_path)
 
         df_batch   = pd.read_json(in_path)
         df_relaxed = pd.concat((df_relaxed, df_batch))
@@ -120,7 +118,10 @@ df_wbm[pred_col] = e_form_preds
 df_wbm[pred_col] -= df_wbm.e_correction_per_atom_mp_legacy
 df_wbm[pred_col] += df_wbm.e_correction_per_atom_mp2020
 
-df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-{model_name}-relaxed-wbm-IS2RE.csv.gz")
+if model_name in all_models:
+    df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-{model_name}-relaxed-wbm-IS2RE.csv.gz")
+else:
+    df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-relaxed-wbm-IS2RE.csv.gz")
 
 # %%
 df_wbm = df_wbm.dropna()

@@ -16,9 +16,9 @@ def plot_scatter(u, y, filename = None):
 
 for n_neighbors in [5, 15, 75, 150]:
 
-    filename_in   = f'umap_n{n_neighbors}.npz'
-    filename_out1 = f'umap_n{n_neighbors}.png'
-    filename_out2 = f'umap_n{n_neighbors}_nomp.png'
+    filename_in   = f'umap_n{n_neighbors}_aoi.npz'
+    filename_out1 = f'umap_n{n_neighbors}_aoi.png'
+    filename_out2 = f'umap_n{n_neighbors}_nomp_aoi.png'
 
     u = np.load(filename_in)['u']
     y = np.load(filename_in)['y']
@@ -32,8 +32,8 @@ for n_neighbors in [5, 15, 75, 150]:
 
 for n_neighbors in [5, 15, 75, 150]:
 
-    filename_in   = f'umap_mptrain_n{n_neighbors}.npz'
-    filename_out1 = f'umap_mptrain_n{n_neighbors}.png'
+    filename_in   = f'umap_mptrain_n{n_neighbors}_aoi.npz'
+    filename_out1 = f'umap_mptrain_n{n_neighbors}_aoi.png'
 
     u = np.load(filename_in)['u']
     y = np.load(filename_in)['y']

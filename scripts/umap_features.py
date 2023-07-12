@@ -7,6 +7,16 @@ from matbench_discovery.data import DATA_FILES, df_wbm
 from pymatgen.core import Structure
 from tqdm import tqdm
 
+# %% Filter alloys of interest (AoI)
+
+def filter_aoi_f(structure) -> bool:
+    for element in structure.composition.elements:
+        if not element.is_metal:
+            return False
+        if element.number > 56:
+            return False
+    return True
+
 # %% Material Structure and Composition Featurizer
 # "A critical examination of robustness and generalizability of machine learning prediction
 #  of materials properties"](https://www.nature.com/articles/s41524-023-01012-9) by
@@ -83,7 +93,7 @@ def featurize_dataframe(
 
 # %%
 
-def featurize_file(filename, computed_structure = False, input_col = "initial_structure", id_col = "material_id"):
+def featurize_file(filename, computed_structure = False, filter_aoi = False, input_col = "initial_structure", id_col = "material_id"):
 
     df_in = pd.read_json(filename).set_index(id_col)
 
@@ -95,6 +105,9 @@ def featurize_file(filename, computed_structure = False, input_col = "initial_st
         df_in[input_col] = [
             Structure.from_dict(x)
             for x in tqdm(df_in[input_col], leave=False, desc="Converting to PyMatgen Structure") ]
+
+    if filter_aoi:
+        df_in = df_in[df_in[input_col].apply(filter_aoi_f)]
 
     df_features = featurize_dataframe(df_in[input_col], col_id=input_col)
 
@@ -110,3 +123,17 @@ df_features.to_csv('2022-10-19-wbm-computed-structure-entries-features.csv.bz2')
 
 df_features = featurize_file(DATA_FILES.mp_computed_structure_entries, input_col = 'entry', computed_structure = True)
 df_features.to_csv('2023-02-07-mp-computed-structure-entries-features.csv.bz2')
+
+
+# %%
+
+df_features = featurize_file(DATA_FILES.wbm_initial_structures, filter_aoi = True)
+df_features.to_csv('2022-10-19-wbm-init-structs-features-aoi.csv.bz2')
+
+df_features = featurize_file(DATA_FILES.wbm_computed_structure_entries, filter_aoi = True, input_col = 'computed_structure_entry', computed_structure = True)
+df_features.to_csv('2022-10-19-wbm-computed-structure-entries-features-aoi.csv.bz2')
+
+df_features = featurize_file(DATA_FILES.mp_computed_structure_entries, filter_aoi = True, input_col = 'entry', computed_structure = True)
+df_features.to_csv('2023-02-07-mp-computed-structure-entries-features-aoi.csv.bz2')
+
+# %%

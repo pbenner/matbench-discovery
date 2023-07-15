@@ -115,13 +115,13 @@ with torch.no_grad():  # get predictions
 
 df_wbm[pred_col] = e_form_preds
 
-df_wbm[pred_col] -= df_wbm.e_correction_per_atom_mp_legacy
-df_wbm[pred_col] += df_wbm.e_correction_per_atom_mp2020
-
 if model_name in all_models:
+    df_wbm[pred_col] -= df_wbm.e_correction_per_atom_mp_legacy
+    df_wbm[pred_col] += df_wbm.e_correction_per_atom_mp2020
+
     df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-{model_name}-relaxed-wbm-IS2RE.csv.gz")
 else:
-    df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-alignn-relaxed-wbm-IS2RE.csv.gz")
+    df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-custom-alignn-relaxed-wbm-IS2RE.csv.gz")
 
 # %%
 df_wbm = df_wbm.dropna()

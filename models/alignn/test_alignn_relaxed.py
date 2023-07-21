@@ -116,11 +116,16 @@ with torch.no_grad():  # get predictions
 df_wbm[pred_col] = e_form_preds
 
 if model_name in all_models:
+    # This is the pre-trained model provided by the ALIGNN authors. It was trained
+    # on an older version of the materials project data. We have to apply the
+    # following energy corrections:
     df_wbm[pred_col] -= df_wbm.e_correction_per_atom_mp_legacy
     df_wbm[pred_col] += df_wbm.e_correction_per_atom_mp2020
 
     df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-{model_name}-relaxed-wbm-IS2RE.csv.gz")
 else:
+    # Model trained on matbench discovery data. No energy correction
+    # required.
     df_wbm[pred_col].round(4).to_csv(f"{module_dir}/{today}-custom-alignn-relaxed-wbm-IS2RE.csv.gz")
 
 # %%

@@ -46,4 +46,16 @@ OSError: [Errno 24] Too many open files
 
 To reproduce the ALIGNN relaxed predictions, run the following scripts:
 1. `alignn_relax.py`: Set the variable `n_splits` to the number of GPU compute nodes. On each compute node, set the environment variable `TASK_ID` to a value in the range 1-`n_splits`. Set the variable `n_processes_per_task` to the number of processes on a single node. For 48 cpu cores with 4 GPUs a good setting is to use 10 processes.
-2. `test_alignn_relaxed.py`: Read the relaxed structures and compute predictions. Set the variable `n_splits` accordingly.
+1. `test_alignn_relaxed.py`: Read the relaxed structures and compute predictions. Set the variable `n_splits` accordingly.
+
+## Train ALIGNN-FF Model
+
+Conda environment:
+1. `conda create -n alignn-ff python=3.10.8`
+1. `conda activate alignn-ff`
+1. `conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia`
+1. `conda install -c dglteam/label/cu118 dgl==1.0.2.cu118`
+1. `pip install alignn-ff-requirements.txt`
+1. `git clone https://github.com/usnistgov/alignn` and checkout tag `v2023.07.10`
+1. Apply patch `alignn-ff-2023.08.02.patch`
+1. `pip install -e alignn`

@@ -17,6 +17,9 @@ outdir = 'data-train-ff'
 
 # %%
 
+# Get data from Figshare:
+# https://figshare.com/articles/dataset/Materials_Project_Trjectory_MPtrj_Dataset/23713842
+
 with open('MPtrj_2022.9_full.json') as f:
     js = json.load(f)
 

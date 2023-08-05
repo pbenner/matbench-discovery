@@ -1,5 +1,4 @@
 accelerate==0.21.0
--e git+ssh://git@github.com/usnistgov/alignn.git@46649be2baeb1bd68370bdab596389810b9c954e#egg=alignn
 appdirs==1.4.4
 ase==3.22.1
 brotlipy==0.7.0

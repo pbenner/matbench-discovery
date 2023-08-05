@@ -35,7 +35,7 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
 if not os.path.exists(outdir):
     os.makedirs(outdir)
 
-# json.dump puts some weird escapes into the atoms dict, do manual export instead
+# json.dump exports atoms dict as string, do manual export instead
 with open(f'{outdir}/id_prop.json', 'w') as f:
     _ = f.write('[')
     for i, item in enumerate(r):

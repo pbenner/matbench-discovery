@@ -9,7 +9,7 @@ index 3c962c2..61a5e06 100644
 -    id_val = ids[-(n_val + n_test) : -n_test]  # noqa:E203
 -    id_test = ids[-n_test:]
 +    id_val = ids[-(n_val + n_test) : -n_test]  if n_test > 0 else ids[-(n_val + n_test) :] # noqa:E203
-+    id_test = ids[n_test:] if n_test > 0 else []
++    id_test = ids[-n_test:] if n_test > 0 else []
      return id_train, id_val, id_test
  
  

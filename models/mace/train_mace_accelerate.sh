@@ -5,7 +5,7 @@ OUTDIR=data-train-result
 
 mkdir -p ${data-train-result}
 
-python ./mace/scripts/run_train.py \
+accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --name="MACE_MPtrj_2022.9" \
     --log_dir="${OUTDIR}/logs" \
     --model_dir="${OUTDIR}" \
@@ -15,6 +15,7 @@ python ./mace/scripts/run_train.py \
     --train_file="./${BASEDIR}/train.h5" \
     --valid_file="./${BASEDIR}/valid.h5" \
     --statistics_file="./${BASEDIR}/statistics.json" \
+    --accelerate \
     --num_workers=16 \
     --model="ScaleShiftMACE" \
     --num_interactions=2 \
@@ -23,7 +24,7 @@ python ./mace/scripts/run_train.py \
     --correlation=3 \
     --batch_size=32 \
     --valid_batch_size=32 \
-    --max_num_epochs=100 \
+    --max_num_epochs=5 \
     --swa \
     --start_swa=60 \
     --ema \

@@ -24,7 +24,7 @@ accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --correlation=3 \
     --batch_size=32 \
     --valid_batch_size=32 \
-    --max_num_epochs=5 \
+    --max_num_epochs=100 \
     --swa \
     --start_swa=60 \
     --ema \

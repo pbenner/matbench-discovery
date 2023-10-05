@@ -6,6 +6,7 @@ import re
 import os
 
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 # %%
 
@@ -49,6 +50,10 @@ y = pd.Series(y, index=df.index).astype(int).to_numpy()
 
 y_mp = [ re.sub(r'^(?:mp|mvc)-\d+$', r'0', id) for id in df_mp.index ]
 y_mp = pd.Series(y_mp, index=df_mp.index).astype(int).to_numpy()
+
+# %% Standardize data
+df    = StandardScaler().fit_transform(df)
+df_mp = StandardScaler().fit_transform(df_mp)
 
 # %%
 

@@ -91,3 +91,5 @@ for n_neighbors in [5, 15, 75, 150]:
     np.savez(filename, u=u, y=y)
 
 # %%
+
+df_pred = pd.read_csv('~/Source/tmp/matbench-discovery-pbenner/models/alignn/2023-07-11-alignn-relaxed-wbm-IS2RE.csv.gz')

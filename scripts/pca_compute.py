@@ -1,12 +1,11 @@
-
 # %% Imports
 
 import numpy as np
 import pandas as pd
-# pip install umap-learn
-import umap
 import re
 import os
+
+from sklearn.decomposition import PCA
 
 # %%
 
@@ -52,55 +51,21 @@ y_mp = [ re.sub(r'^(?:mp|mvc)-\d+$', r'0', id) for id in df_mp.index ]
 y_mp = pd.Series(y_mp, index=df_mp.index).astype(int).to_numpy()
 
 # %%
-for n_neighbors in [5, 15, 75, 150]:
 
-    filename = f'umap_n{n_neighbors}.npz'
+pca = PCA(n_components=2)
+pca.fit(df)
 
-    if os.path.exists(filename):
-        continue
+X = pca.transform(df)
 
-    print(f'Computing UMAP for n_neighbors={n_neighbors}')
-
-    reducer = umap.UMAP(random_state=42, low_memory=False, n_neighbors=n_neighbors)
-    reducer.fit(df)
-
-    u = reducer.transform(df)
-
-    np.savez(filename, u=u, y=y)
-
-# %%
-for n_neighbors in [5, 15, 75, 150]:
-
-    filename = f'umap_mptrain_n{n_neighbors}.npz'
-
-    if os.path.exists(filename):
-        continue
-
-    print(f'Computing UMAP on MP data for n_neighbors={n_neighbors}')
-
-    # Train only on MP data
-    reducer = umap.UMAP(random_state=42, low_memory=False, n_neighbors=n_neighbors)
-    reducer.fit(df_mp)
-
-    # Transform everything
-    u = reducer.transform(df)
-
-    np.savez(filename, u=u, y=y)
+np.savez('pca.npz', X = X, y = y)
 
 # %%
 
-for n_neighbors in [5, 15, 75, 150]:
+pca = PCA(n_components=2)
+pca.fit(df_mp)
 
-    filename = f'umap_with_label_n{n_neighbors}.npz'
+X = pca.transform(df)
 
-    if os.path.exists(filename):
-        continue
+np.savez('pca_mptrain.npz', X = X, y = y)
 
-    print(f'Computing UMAP for n_neighbors={n_neighbors}')
-
-    reducer = umap.UMAP(random_state=42, low_memory=False, n_neighbors=n_neighbors)
-    reducer.fit(df, y = y)
-
-    u = reducer.transform(df)
-
-    np.savez(filename, u=u, y=y)
+# %%

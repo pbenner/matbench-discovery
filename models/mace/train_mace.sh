@@ -23,7 +23,7 @@ accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --correlation=3 \
     --batch_size=32 \
     --valid_batch_size=32 \
-    --max_num_epochs=100 \
+    --max_num_epochs=150 \
     --ema \
     --ema_decay=0.99 \
     --amsgrad \
@@ -32,5 +32,5 @@ accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --compute_stress True \
     --forces_weight=1.0 \
     --energy_weight=1.0 \
-    --stress_weight=0.5 \
-    --restart_latest
+    --restart_latest \
+    --restart_lr=0.003

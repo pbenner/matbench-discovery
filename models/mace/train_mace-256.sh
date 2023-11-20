@@ -27,6 +27,7 @@ accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --ema \
     --ema_decay=0.99 \
     --amsgrad \
+    --loss='weighted-l1' \
     --error_table='PerAtomMAE' \
     --seed=42 \
     --forces_weight=1.0 \

@@ -1,9 +1,9 @@
 #! /bin/sh
 
 BASEDIR=data-train-preprocessed
-OUTDIR=data-train-result
+OUTDIR=data-train-result-256
 
-mkdir -p ${data-train-result}
+mkdir -p ${OUTDIR}
 
 accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --name="MACE_MPtrj_2022.9" \
@@ -32,4 +32,5 @@ accelerate launch --multi_gpu --num_processes=4 ./mace/scripts/run_train.py \
     --forces_weight=1.0 \
     --energy_weight=1.0 \
     --restart_latest \
-    --restart_lr=0.003
+    --restart_lr=0.003 \
+    --save_cpu

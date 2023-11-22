@@ -3,6 +3,7 @@ import json
 import numpy as np
 
 from ase.io import write
+from ase.units import GPa
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from tqdm import tqdm
@@ -25,10 +26,10 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
     for submid, subvalues in values.items():
         atoms = AseAtomsAdaptor.get_atoms(
             Structure.from_dict(subvalues['structure']),
-            info={'config_type': 'Default',
-                  'energy': subvalues['uncorrected_total_energy'],
+            info={'config_type'     : 'Default',
+                  'energy'          : subvalues['uncorrected_total_energy'],
                   'energy_corrected': subvalues['corrected_total_energy'],
-                  'stress': np.array(subvalues['stress'])})
+                  'stress'          : np.array(subvalues['stress']) * 1e-1 * GPa })
         atoms.arrays['forces'] = np.array(subvalues['force'])
 
         r.append(atoms)

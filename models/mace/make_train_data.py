@@ -29,7 +29,7 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
             info={'config_type'     : 'Default',
                   'energy'          : subvalues['uncorrected_total_energy'],
                   'energy_corrected': subvalues['corrected_total_energy'],
-                  'stress'          : np.array(subvalues['stress']) * 1e-1 * GPa })
+                  'stress'          : -np.array(subvalues['stress']) * 1e-1 * GPa })
         atoms.arrays['forces'] = np.array(subvalues['force'])
 
         r.append(atoms)

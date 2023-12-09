@@ -1,6 +1,7 @@
 # %% Imports
 import json
 import numpy as np
+import random
 
 from ase.io import write
 from ase.units import GPa
@@ -15,14 +16,40 @@ __date__ = "2023-08-11"
 
 # %%
 
+class WeightedRandomizer:
+    def __init__ (self, weights, seed=42):
+        random.seed(seed)
+        self.__max = .0
+        self.__weights = []
+        for value, weight in weights.items ():
+            self.__max += weight
+            self.__weights.append ( (self.__max, value) )
+
+    def __call__(self):
+        r = random.random () * self.__max
+        for ceil, value in self.__weights:
+            if ceil > r: return value
+
+# %%
+
 # Get data from Figshare:
 # https://figshare.com/articles/dataset/Materials_Project_Trjectory_MPtrj_Dataset/23713842
 
 with open('MPtrj_2022.9_full.json') as f:
     js = json.load(f)
 
-r = []
+rand = WeightedRandomizer({'train': 0.95, 'valid': 0.05, 'test': 0.00})
+
+r_train = []
+r_valid = []
+r_test  = []
+
 for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
+
+    # Decide here on the outer loop if the trajectory goes into train, valid,
+    # or test set
+    selection = rand()
+
     for submid, subvalues in values.items():
         atoms = AseAtomsAdaptor.get_atoms(
             Structure.from_dict(subvalues['structure']),
@@ -32,8 +59,18 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
                   'stress'          : -np.array(subvalues['stress']) * 1e-1 * GPa })
         atoms.arrays['forces'] = np.array(subvalues['force'])
 
-        r.append(atoms)
+        if selection == 'train':
+            r_train.append(atoms)
+        if selection == 'valid':
+            r_valid.append(atoms)
+        if selection == 'test':
+            r_test .append(atoms)
 
 # %% Export result
 
-write('data-train.xyz', r)
+if len(r_train) > 0:
+    write('data-train-train.xyz', r_train)
+if len(r_valid) > 0:
+    write('data-train-valid.xyz', r_valid)
+if len(r_test) > 0:
+    write('data-train-test.xyz' , r_test)

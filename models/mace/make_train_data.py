@@ -68,7 +68,7 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
         # or test set.
         if selection is None:
 
-            comp = atoms.get_chemical_formula(mode='hill')
+            comp = atoms.get_chemical_formula(mode='reduce')
 
             # If this composition is unseen, select a new train, valid, or
             # test set for this composition at random

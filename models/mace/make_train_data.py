@@ -38,7 +38,12 @@ class WeightedRandomizer:
 with open('MPtrj_2022.9_full.json') as f:
     js = json.load(f)
 
+# Random assignment to train, valid, or test set
 rand = WeightedRandomizer({'train': 0.95, 'valid': 0.05, 'test': 0.00})
+
+# A dictionary used to put all structures with the same composition
+# to go into the same train, valid, or test set
+selection_dict = {}
 
 r_train = []
 r_valid = []
@@ -46,9 +51,9 @@ r_test  = []
 
 for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
 
-    # Decide here on the outer loop if the trajectory goes into train, valid,
-    # or test set
-    selection = rand()
+    # This variable determines if the trajectory goes into train, valid, or
+    # test set
+    selection = None
 
     for submid, subvalues in values.items():
         atoms = AseAtomsAdaptor.get_atoms(
@@ -58,6 +63,19 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
                   'energy_corrected': subvalues['corrected_total_energy'],
                   'stress'          : -np.array(subvalues['stress']) * 1e-1 * GPa })
         atoms.arrays['forces'] = np.array(subvalues['force'])
+
+        # Structures with the same composition must go into the same train, valid,
+        # or test set.
+        if selection is None:
+
+            comp = atoms.get_chemical_formula(mode='hill')
+
+            # If this composition is unseen, select a new train, valid, or
+            # test set for this composition at random
+            if not comp in selection_dict:
+                selection_dict[comp] = rand()
+
+            selection = selection_dict[comp]
 
         if selection == 'train':
             r_train.append(atoms)

@@ -87,8 +87,8 @@ for _, values in tqdm(js.items(), desc='Converting data', total=len(js)):
 # %% Export result
 
 if len(r_train) > 0:
-    write('data-train-train.xyz', r_train)
+    write('data-indep-train.xyz', r_train)
 if len(r_valid) > 0:
-    write('data-train-valid.xyz', r_valid)
+    write('data-indep-valid.xyz', r_valid)
 if len(r_test) > 0:
-    write('data-train-test.xyz' , r_test)
+    write('data-indep-test.xyz' , r_test)

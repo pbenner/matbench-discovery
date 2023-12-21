@@ -1,9 +1,9 @@
 #! /bin/sh
 
-INFILE_TRAIN=data-train.xyz
-INFILE_VALID=data-valid.xyz
+INFILE_TRAIN=data-indep-train.xyz
+INFILE_VALID=data-indep-valid.xyz
 
-OUTDIR=data-train-preprocessed
+OUTDIR=data-indep-train-preprocessed
 
 rm -rf ${OUTDIR} && mkdir ${OUTDIR}
 

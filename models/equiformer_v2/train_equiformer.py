@@ -15,10 +15,7 @@ from typing  import Iterable, Optional
 
 from torch_geometric.loader import DataLoader
 from torch_cluster import radius_graph
-from nets import EquiformerV2_OC20
 
-from timm.utils import ModelEmaV2, get_state_dict, dispatch_clip_grad
-from timm.scheduler import create_scheduler
 from timm.optim.adafactor import Adafactor
 from timm.optim.adahessian import Adahessian
 from timm.optim.adamp import AdamP
@@ -30,6 +27,10 @@ from timm.optim.radam import RAdam
 from timm.optim.rmsprop_tf import RMSpropTF
 from timm.optim.sgdp import SGDP
 from timm.optim.adabelief import AdaBelief
+from timm.utils import ModelEmaV2, get_state_dict, dispatch_clip_grad
+from timm.scheduler import create_scheduler
+
+from nets import EquiformerV2_OC20
 
 from mace_data.hdf5_dataset import HDF5Dataset
 from mace_data.tools import get_atomic_number_table_from_zs
@@ -50,10 +51,10 @@ def get_dataloaders(args):
 
 
     train_set = HDF5Dataset(
-        f"data-r{args.radius}/train.h5", r_max={args.radius}, z_table=z_table
+        f"data-r{args.radius}/train.h5", r_max=args.radius, z_table=z_table
     )
     valid_set = HDF5Dataset(
-        f"data-r{args.radius}/valid.h5", r_max={args.radius}, z_table=z_table
+        f"data-r{args.radius}/valid.h5", r_max=args.radius, z_table=z_table
     )
 
     train_loader = torch_geometric.dataloader.DataLoader(
@@ -556,7 +557,7 @@ def main(args):
     # since dataset needs random 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-        
+
     ''' Network '''
     model = EquiformerV2_OC20(
         # First three arguments are not used

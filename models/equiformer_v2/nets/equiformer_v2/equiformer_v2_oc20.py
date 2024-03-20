@@ -220,7 +220,7 @@ class EquiformerV2_OC20(BaseModel):
         self.sphere_channels_all = self.num_resolutions * self.sphere_channels
         
         # Weights for message initialization
-        self.sphere_embedding = nn.Embedding(self.max_num_elements, self.sphere_channels_all)
+        self.sphere_embedding = nn.Embedding(self.max_num_elements, self.sphere_channels_all, device=self.device)
         
         # Initialize the function used to measure the distances between atoms
         assert self.distance_function in [

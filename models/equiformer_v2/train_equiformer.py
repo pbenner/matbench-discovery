@@ -9,6 +9,7 @@ import time
 import torch
 import numpy as np
 import os
+from accelerate import Accelerator
 
 from pathlib import Path
 from typing  import Iterable, Optional
@@ -60,7 +61,7 @@ def get_dataloaders(args):
 
     train_loader = torch_geometric.loader.DataLoader(
         dataset=train_set,
-        batch_size=32,   
+        batch_size=10,
         shuffle=True,
         drop_last=False,
         pin_memory=False,
@@ -146,87 +147,8 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
-def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
-                    norm_factor: list, 
-                    target: int,
-                    data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, 
-                    model_ema: Optional[ModelEma] = None,  
-                    amp_autocast=None,
-                    loss_scaler=None,
-                    clip_grad=None,
-                    print_freq: int = 100, 
-                    logger=None):
-    
-    model.train()
-    criterion.train()
-    
-    loss_metric = AverageMeter()
-    mae_metric = AverageMeter()
-    
-    start_time = time.perf_counter()
-    
-    task_mean = norm_factor[0] #model.task_mean
-    task_std  = norm_factor[1] #model.task_std
 
-    #atomref = dataset.atomref()
-    #if atomref is None:
-    #    atomref = torch.zeros(100, 1)
-    #atomref = atomref.to(device)
-    
-    for step, data in enumerate(data_loader):
-        data = data.to(device)
-        #data.edge_d_index = radius_graph(data.pos, r=10.0, batch=data.batch, loop=True)
-        #data.edge_d_attr = data.edge_attr
-        with amp_autocast():
-            pred = model(f_in=data.x, pos=data.pos, batch=data.batch, 
-                node_atom=data.z,
-                edge_d_index=data.edge_d_index, edge_d_attr=data.edge_d_attr)
-            pred = pred.squeeze()
-            #loss = (pred - data.y[:, target])
-            #loss = loss.pow(2).mean()
-            #atomref_value = atomref(data.z)
-
-            loss = criterion(pred, (data.y[:, target] - task_mean) / task_std)
-        
-        optimizer.zero_grad()
-        if loss_scaler is not None:
-            loss_scaler(loss, optimizer, parameters=model.parameters())
-        else:
-            loss.backward()
-            if clip_grad is not None:
-                dispatch_clip_grad(model.parameters(), 
-                    value=clip_grad, mode='norm')
-            optimizer.step()
-        
-        #err = (pred.detach() * task_std + task_mean) - data.y[:, target]
-        #err_list += [err.cpu()]
-        loss_metric.update(loss.item(), n=pred.shape[0])
-        err = pred.detach() * task_std + task_mean - data.y[:, target]
-        mae_metric.update(torch.mean(torch.abs(err)).item(), n=pred.shape[0])
-        
-        if model_ema is not None:
-            model_ema.update(model)
-        
-        torch.cuda.synchronize()
-        
-        # logging
-        if step % print_freq == 0 or step == len(data_loader) - 1: #time.perf_counter() - wall_print > 15:
-            w = time.perf_counter() - start_time
-            e = (step + 1) / len(data_loader)
-            info_str = 'Epoch: [{epoch}][{step}/{length}] \t loss: {loss:.5f}, MAE: {mae:.5f}, time/step={time_per_step:.0f}ms, '.format( 
-                epoch=epoch, step=step, length=len(data_loader), 
-                mae=mae_metric.avg, 
-                loss=loss_metric.avg,
-                time_per_step=(1e3 * w / e / len(data_loader))
-                )
-            info_str += 'lr={:.2e}'.format(optimizer.param_groups[0]["lr"])
-            logger.info(info_str)
-        
-    return mae_metric.avg
-
-
-def evaluate(model, norm_factor, target, data_loader, device, amp_autocast=None, 
+def evaluate(model, norm_factor, target, data_loader, amp_autocast=None, 
     print_freq=100, logger=None):
     
     model.eval()
@@ -242,7 +164,6 @@ def evaluate(model, norm_factor, target, data_loader, device, amp_autocast=None,
     with torch.no_grad():
             
         for data in data_loader:
-            data = data.to(device)
             #data.edge_d_index = radius_graph(data.pos, r=10.0, batch=data.batch, loop=True)
             #data.edge_d_attr = data.edge_attr
             
@@ -515,7 +436,6 @@ def get_args_parser():
                         help='max iteration to evaluate on the testing set')
     parser.add_argument('--energy-weight', type=float, default=0.2)
     parser.add_argument('--force-weight', type=float, default=0.8)
-    parser.add_argument("--device", type=str, default='cpu')
     # random
     parser.add_argument("--seed", type=int, default=1)
     # data loader config
@@ -559,6 +479,8 @@ def main(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
+    accelerator = Accelerator()
+
     ''' Network '''
     model = EquiformerV2_OC20(
         # First three arguments are not used
@@ -570,16 +492,14 @@ def main(args):
     if args.checkpoint_path is not None:
         state_dict = torch.load(args.checkpoint_path, map_location='cpu')
         model.load_state_dict(state_dict['state_dict'])
-
-    model = model.to(args.device)
     
     model_ema = None
     if args.model_ema:
         # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
         model_ema = ModelEma(
             model,
-            decay=args.model_ema_decay,
-            device='cpu' if args.model_ema_force_cpu else None)
+            decay=args.model_ema_decay)
+        model_ema = accelerator.prepare(model_ema)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     _log.info('Number of params: {}'.format(n_parameters))
@@ -588,10 +508,13 @@ def main(args):
     optimizer = create_optimizer(args, model)
     lr_scheduler, _ = create_scheduler(args, optimizer)
     criterion = L2MAELoss() #torch.nn.L1Loss()  #torch.nn.MSELoss() # torch.nn.L1Loss() 
-    
+
+    model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
+
     ''' Data Loader '''
     train_loader, val_loader, test_loader = get_dataloaders(args)
-    
+    train_loader, val_loader, test_loader = accelerator.prepare(train_loader, val_loader, test_loader)
+
     ''' Compute stats '''
     if args.compute_stats:
         compute_stats(train_loader, max_radius=args.radius, logger=_log, print_freq=args.print_freq)
@@ -607,7 +530,7 @@ def main(args):
 
     if args.evaluate:
         test_err, test_loss = evaluate(args=args, model=model, criterion=criterion, 
-            data_loader=test_loader, device=args.device,
+            data_loader=test_loader,
             print_freq=args.print_freq, logger=_log, print_progress=True, max_iter=-1)
         return
 
@@ -617,104 +540,109 @@ def main(args):
         
         lr_scheduler.step(epoch)
         
-        train_err, train_loss = train_one_epoch(args=args, model=model, criterion=criterion,
+        train_err, train_loss = train_one_epoch(args=args, model=model, accelerator=accelerator, criterion=criterion,
             data_loader=train_loader, optimizer=optimizer,
-            device=args.device, epoch=epoch, model_ema=model_ema,
+            epoch=epoch, model_ema=model_ema,
             print_freq=args.print_freq, logger=_log)
         
         val_err, val_loss = evaluate(args=args, model=model, criterion=criterion, 
-            data_loader=val_loader, device=args.device,
+            data_loader=val_loader,
             print_freq=args.print_freq, logger=_log, print_progress=False)
         
         if (epoch + 1) % args.test_interval == 0:
             test_err, test_loss = evaluate(args=args, model=model, criterion=criterion, 
-            data_loader=test_loader, device=args.device,
+            data_loader=test_loader,
             print_freq=args.print_freq, logger=_log, print_progress=True, max_iter=args.test_max_iter)
         else:
             test_err, test_loss = None, None
 
-        update_val_result, update_test_result = update_best_results(args, best_metrics, val_err, test_err, epoch)
-        if update_val_result:
-            torch.save(
-                {'state_dict': model.state_dict()}, 
-                os.path.join(args.output_dir, 
-                    'best_val_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, val_err['energy'].avg, val_err['force'].avg))
-            )
-        if update_test_result:
-            torch.save(
-                {'state_dict': model.state_dict()}, 
-                os.path.join(args.output_dir, 
-                    'best_test_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
-            )
-        if (epoch + 1) % args.test_interval == 0 and (not update_val_result) and (not update_test_result):
-            torch.save(
-                {'state_dict': model.state_dict()}, 
-                os.path.join(args.output_dir, 
-                    'epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
-            )
+        # Only main process should save model
+        if accelerator.process_index == 0:
 
-        info_str = 'Epoch: [{epoch}] Target: [{target}] train_e_MAE: {train_e_mae:.5f}, train_f_MAE: {train_f_mae:.5f}, '.format(
-            epoch=epoch, target=args.target, train_e_mae=train_err['energy'].avg, train_f_mae=train_err['force'].avg)
-        info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(val_err['energy'].avg, val_err['force'].avg)
-        if (epoch + 1) % args.test_interval == 0:
-            info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}, '.format(test_err['energy'].avg, test_err['force'].avg)
-        info_str += 'Time: {:.2f}s'.format(time.perf_counter() - epoch_start_time)
-        _log.info(info_str)
-        
-        info_str = 'Best -- val_epoch={}, test_epoch={}, '.format(best_metrics['val_epoch'], best_metrics['test_epoch'])
-        info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(best_metrics['val_energy_err'], best_metrics['val_force_err'])
-        info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}\n'.format(best_metrics['test_energy_err'], best_metrics['test_force_err'])
-        _log.info(info_str)
+            update_val_result, update_test_result = update_best_results(args, best_metrics, val_err, test_err, epoch)
+            if update_val_result:
+                torch.save(
+                    {'state_dict': model.state_dict()}, 
+                    os.path.join(args.output_dir, 
+                        'best_val_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, val_err['energy'].avg, val_err['force'].avg))
+                )
+            if update_test_result:
+                torch.save(
+                    {'state_dict': model.state_dict()}, 
+                    os.path.join(args.output_dir, 
+                        'best_test_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
+                )
+            if (epoch + 1) % args.test_interval == 0 and (not update_val_result) and (not update_test_result):
+                torch.save(
+                    {'state_dict': model.state_dict()}, 
+                    os.path.join(args.output_dir, 
+                        'epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
+                )
+
+            info_str = 'Epoch: [{epoch}] Target: [{target}] train_e_MAE: {train_e_mae:.5f}, train_f_MAE: {train_f_mae:.5f}, '.format(
+                epoch=epoch, target=args.target, train_e_mae=train_err['energy'].avg, train_f_mae=train_err['force'].avg)
+            info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(val_err['energy'].avg, val_err['force'].avg)
+            if (epoch + 1) % args.test_interval == 0:
+                info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}, '.format(test_err['energy'].avg, test_err['force'].avg)
+            info_str += 'Time: {:.2f}s'.format(time.perf_counter() - epoch_start_time)
+            _log.info(info_str)
+            
+            info_str = 'Best -- val_epoch={}, test_epoch={}, '.format(best_metrics['val_epoch'], best_metrics['test_epoch'])
+            info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(best_metrics['val_energy_err'], best_metrics['val_force_err'])
+            info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}\n'.format(best_metrics['test_energy_err'], best_metrics['test_force_err'])
+            _log.info(info_str)
         
         # evaluation with EMA
         if model_ema is not None:
             ema_val_err, _ = evaluate(args=args, model=model_ema.module, criterion=criterion, 
-                data_loader=val_loader, device=args.device,
+                data_loader=val_loader,
                 print_freq=args.print_freq, logger=_log, print_progress=False)
             
             if (epoch + 1) % args.test_interval == 0:
                 ema_test_err, _ = evaluate(args=args, model=model_ema.module, criterion=criterion, 
-                    data_loader=test_loader, device=args.device,
+                    data_loader=test_loader,
                     print_freq=args.print_freq, logger=_log, print_progress=True, max_iter=args.test_max_iter)
             else:
                 ema_test_err, ema_test_loss = None, None
                 
             update_val_result, update_test_result = update_best_results(args, best_ema_metrics, ema_val_err, ema_test_err, epoch)
 
-            if update_val_result:
-                torch.save(
-                    {'state_dict': get_state_dict(model_ema)}, 
-                    os.path.join(args.output_dir, 
-                        'best_ema_val_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, ema_val_err['energy'].avg, ema_val_err['force'].avg))
-                )
-            if update_test_result:
-                torch.save(
-                    {'state_dict': get_state_dict(model_ema)}, 
-                    os.path.join(args.output_dir, 
-                        'best_ema_test_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, ema_test_err['energy'].avg, ema_test_err['force'].avg))
-                )
-            if (epoch + 1) % args.test_interval == 0 and (not update_val_result) and (not update_test_result):
-                torch.save(
-                    {'state_dict': get_state_dict(model_ema)}, 
-                    os.path.join(args.output_dir, 
-                        'ema_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
-                )
+            if accelerator.process_index == 0:
 
-            info_str = 'EMA '
-            info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(ema_val_err['energy'].avg, ema_val_err['force'].avg)
-            if (epoch + 1) % args.test_interval == 0:
-                info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}, '.format(ema_test_err['energy'].avg, ema_test_err['force'].avg)
-            info_str += 'Time: {:.2f}s'.format(time.perf_counter() - epoch_start_time)
-            _log.info(info_str)
-            
-            info_str = 'Best EMA -- val_epoch={}, test_epoch={}, '.format(best_ema_metrics['val_epoch'], best_ema_metrics['test_epoch'])
-            info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(best_ema_metrics['val_energy_err'], best_ema_metrics['val_force_err'])
-            info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}\n'.format(best_ema_metrics['test_energy_err'], best_ema_metrics['test_force_err'])
-            _log.info(info_str)
+                if update_val_result:
+                    torch.save(
+                        {'state_dict': get_state_dict(model_ema)}, 
+                        os.path.join(args.output_dir, 
+                            'best_ema_val_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, ema_val_err['energy'].avg, ema_val_err['force'].avg))
+                    )
+                if update_test_result:
+                    torch.save(
+                        {'state_dict': get_state_dict(model_ema)}, 
+                        os.path.join(args.output_dir, 
+                            'best_ema_test_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, ema_test_err['energy'].avg, ema_test_err['force'].avg))
+                    )
+                if (epoch + 1) % args.test_interval == 0 and (not update_val_result) and (not update_test_result):
+                    torch.save(
+                        {'state_dict': get_state_dict(model_ema)}, 
+                        os.path.join(args.output_dir, 
+                            'ema_epochs@{}_e@{:.4f}_f@{:.4f}.pth.tar'.format(epoch, test_err['energy'].avg, test_err['force'].avg))
+                    )
+
+                info_str = 'EMA '
+                info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(ema_val_err['energy'].avg, ema_val_err['force'].avg)
+                if (epoch + 1) % args.test_interval == 0:
+                    info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}, '.format(ema_test_err['energy'].avg, ema_test_err['force'].avg)
+                info_str += 'Time: {:.2f}s'.format(time.perf_counter() - epoch_start_time)
+                _log.info(info_str)
+                
+                info_str = 'Best EMA -- val_epoch={}, test_epoch={}, '.format(best_ema_metrics['val_epoch'], best_ema_metrics['test_epoch'])
+                info_str += 'val_e_MAE: {:.5f}, val_f_MAE: {:.5f}, '.format(best_ema_metrics['val_energy_err'], best_ema_metrics['val_force_err'])
+                info_str += 'test_e_MAE: {:.5f}, test_f_MAE: {:.5f}\n'.format(best_ema_metrics['test_energy_err'], best_ema_metrics['test_force_err'])
+                _log.info(info_str)
 
     # evaluate on the whole testing set
     test_err, test_loss = evaluate(args=args, model=model, criterion=criterion, 
-        data_loader=test_loader, device=args.device,
+        data_loader=test_loader,
         print_freq=args.print_freq, logger=_log, print_progress=True, max_iter=-1)
         
 
@@ -748,9 +676,9 @@ def update_best_results(args, best_metrics, val_err, test_err, epoch):
 
 
 def train_one_epoch(args, 
-                    model: torch.nn.Module, criterion: torch.nn.Module,
+                    model: torch.nn.Module, accelerator: Accelerator, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, 
+                    epoch: int, 
                     model_ema: Optional[ModelEma] = None,  
                     print_freq: int = 100, 
                     logger=None):
@@ -764,7 +692,6 @@ def train_one_epoch(args,
     start_time = time.perf_counter()
 
     for step, data in enumerate(data_loader):
-        data = data.to(device)
 
         pred_y, pred_dy = model(data)
 
@@ -773,7 +700,7 @@ def train_one_epoch(args,
         loss = args.energy_weight * loss_e + args.force_weight * loss_f
 
         optimizer.zero_grad()
-        loss.backward()
+        accelerator.backward(loss)
         optimizer.step()
         
         loss_metrics['energy'].update(loss_e.item(), n=pred_y.shape[0])
@@ -789,22 +716,22 @@ def train_one_epoch(args,
         if model_ema is not None:
             model_ema.update(model)
         
-        torch.cuda.synchronize()
-        
-        # logging
-        if step % print_freq == 0 or step == len(data_loader) - 1: 
-            w = time.perf_counter() - start_time
-            e = (step + 1) / len(data_loader)
-            info_str = 'Epoch: [{epoch}][{step}/{length}] \t'.format(epoch=epoch, step=step, length=len(data_loader))
-            info_str +=  'loss_e: {loss_e:.5f}, loss_f: {loss_f:.5f}, e_MAE: {e_mae:.5f}, f_MAE: {f_mae:.5f}, '.format(
-                loss_e=loss_metrics['energy'].avg, loss_f=loss_metrics['force'].avg, 
-                e_mae=mae_metrics['energy'].avg, f_mae=mae_metrics['force'].avg, 
-            )
-            info_str += 'time/step={time_per_step:.0f}ms, '.format( 
-                time_per_step=(1e3 * w / e / len(data_loader))
-            )
-            info_str += 'lr={:.2e}'.format(optimizer.param_groups[0]["lr"])
-            logger.info(info_str)
+        if accelerator.process_index == 0:
+
+            # logging
+            if step % print_freq == 0 or step == len(data_loader) - 1: 
+                w = time.perf_counter() - start_time
+                e = (step + 1) / len(data_loader)
+                info_str = 'Epoch: [{epoch}][{step}/{length}] \t'.format(epoch=epoch, step=step, length=len(data_loader))
+                info_str +=  'loss_e: {loss_e:.5f}, loss_f: {loss_f:.5f}, e_MAE: {e_mae:.5f}, f_MAE: {f_mae:.5f}, '.format(
+                    loss_e=loss_metrics['energy'].avg, loss_f=loss_metrics['force'].avg, 
+                    e_mae=mae_metrics['energy'].avg, f_mae=mae_metrics['force'].avg, 
+                )
+                info_str += 'time/step={time_per_step:.0f}ms, '.format( 
+                    time_per_step=(1e3 * w / e / len(data_loader))
+                )
+                info_str += 'lr={:.2e}'.format(optimizer.param_groups[0]["lr"])
+                logger.info(info_str)
         
     return mae_metrics, loss_metrics
 
@@ -812,7 +739,6 @@ def train_one_epoch(args,
 def evaluate(args, 
             model: torch.nn.Module, criterion: torch.nn.Module,
             data_loader: Iterable, 
-            device: torch.device,   
             print_freq: int = 100, 
             logger=None, 
             print_progress=False, 
@@ -829,7 +755,6 @@ def evaluate(args,
             
         for step, data in enumerate(data_loader):
 
-            data = data.to(device)
             pred_y, pred_dy = model(node_atom=data.z, pos=data.pos, batch=data.batch)
 
             loss_e = criterion(pred_y, data.y)
@@ -845,18 +770,19 @@ def evaluate(args,
             force_err = torch.mean(torch.abs(force_err)).item()     # based on OC20 and TorchMD-Net, they average over x, y, z
             mae_metrics['force'].update(force_err, n=pred_dy.shape[0])
             
-            # logging
-            if (step % print_freq == 0 or step == len(data_loader) - 1) and print_progress: 
-                w = time.perf_counter() - start_time
-                e = (step + 1) / len(data_loader)
-                info_str = '[{step}/{length}] \t'.format(step=step, length=len(data_loader))
-                info_str +=  'e_MAE: {e_mae:.5f}, f_MAE: {f_mae:.5f}, '.format(
-                    e_mae=mae_metrics['energy'].avg, f_mae=mae_metrics['force'].avg, 
-                )
-                info_str += 'time/step={time_per_step:.0f}ms'.format( 
-                    time_per_step=(1e3 * w / e / len(data_loader))
-                )
-                logger.info(info_str)
+            if accelerator.process_index == 0:
+                # logging
+                if (step % print_freq == 0 or step == len(data_loader) - 1) and print_progress: 
+                    w = time.perf_counter() - start_time
+                    e = (step + 1) / len(data_loader)
+                    info_str = '[{step}/{length}] \t'.format(step=step, length=len(data_loader))
+                    info_str +=  'e_MAE: {e_mae:.5f}, f_MAE: {f_mae:.5f}, '.format(
+                        e_mae=mae_metrics['energy'].avg, f_mae=mae_metrics['force'].avg, 
+                    )
+                    info_str += 'time/step={time_per_step:.0f}ms'.format( 
+                        time_per_step=(1e3 * w / e / len(data_loader))
+                    )
+                    logger.info(info_str)
             
             if ((step + 1) >= max_iter) and (max_iter != -1):
                 break

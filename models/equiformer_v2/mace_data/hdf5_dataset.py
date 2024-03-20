@@ -1,10 +1,21 @@
 import h5py
-import torch
 
+from ase import Atoms
+from ocpmodels.preprocessing import AtomsToGraphs
 from torch.utils.data import Dataset, IterableDataset, ChainDataset
 
-from .atomic_data import AtomicData
-from .utils import Configuration
+class CachedCalc:
+
+    def __init__(self, energy, forces):
+        self.energy = energy
+        self.forces = forces
+
+    def get_potential_energy(self, apply_constraint=False):
+        return self.energy
+
+    def get_forces(self, apply_constraint=False):
+        return self.forces
+
 
 class HDF5ChainDataset(ChainDataset):
     def __init__(self, file_path, r_max, z_table, **kwargs):
@@ -51,6 +62,7 @@ class HDF5IterDataset(IterableDataset):
         # move opening of file to __getitem__?
         self.iter_group = iter_group
         self.length = len(self.iter_group.keys())
+        self.converter = AtomsToGraphs(r_energy=True, r_forces=True, radius=r_max)
         self.r_max = r_max
         self.z_table = z_table
         # self.file = file
@@ -67,31 +79,22 @@ class HDF5IterDataset(IterableDataset):
         grp_list = []
         for i in range(len_subgrp):
             subgrp = grp["config_" + str(i)]
-            config = Configuration(
-                atomic_numbers=subgrp["atomic_numbers"][()],
-                positions=subgrp["positions"][()],
-                energy=subgrp["energy"][()],
-                forces=subgrp["forces"][()],
-                stress=subgrp["stress"][()],
-                virials=subgrp["virials"][()],
-                dipole=subgrp["dipole"][()],
-                charges=subgrp["charges"][()],
-                weight=subgrp["weight"][()],
-                energy_weight=subgrp["energy_weight"][()],
-                forces_weight=subgrp["forces_weight"][()],
-                stress_weight=subgrp["stress_weight"][()],
-                virials_weight=subgrp["virials_weight"][()],
-                config_type=subgrp["config_type"][()],
-                pbc=subgrp["pbc"][()],
-                cell=subgrp["cell"][()],
+
+            atoms = Atoms(
+                numbers   = subgrp["atomic_numbers"][()],
+                positions = subgrp["positions"][()],
+                cell      = subgrp["cell"][()],
+                pbc       = subgrp["pbc"][()],
             )
-            atomic_data = AtomicData.from_config(
-                config, z_table=self.z_table, cutoff=self.r_max
+            atoms.calc = CachedCalc(
+                subgrp["energy"][()],
+                subgrp["forces"][()]
             )
-            grp_list.append(atomic_data)
+            graphs = self.converter.convert(atoms)
+
+            grp_list.append(graphs)
 
         return iter(grp_list)
-
 
 class HDF5Dataset(Dataset):
     def __init__(self, file_path, r_max, z_table, **kwargs):
@@ -101,6 +104,7 @@ class HDF5Dataset(Dataset):
         batch_key = list(self.file.keys())[0]
         self.batch_size = len(self.file[batch_key].keys())
         self.length = len(self.file.keys()) * self.batch_size
+        self.converter = AtomsToGraphs(r_energy=True, r_forces=True, radius=r_max)
         self.r_max = r_max
         self.z_table = z_table
         try:
@@ -131,28 +135,20 @@ class HDF5Dataset(Dataset):
         config_index = index % self.batch_size
         grp = self.file["config_batch_" + str(batch_index)]
         subgrp = grp["config_" + str(config_index)]
-        config = Configuration(
-            atomic_numbers=subgrp["atomic_numbers"][()],
-            positions=subgrp["positions"][()],
-            energy=unpack_value(subgrp["energy"][()]),
-            forces=unpack_value(subgrp["forces"][()]),
-            stress=unpack_value(subgrp["stress"][()]),
-            virials=unpack_value(subgrp["virials"][()]),
-            dipole=unpack_value(subgrp["dipole"][()]),
-            charges=unpack_value(subgrp["charges"][()]),
-            weight=unpack_value(subgrp["weight"][()]),
-            energy_weight=unpack_value(subgrp["energy_weight"][()]),
-            forces_weight=unpack_value(subgrp["forces_weight"][()]),
-            stress_weight=unpack_value(subgrp["stress_weight"][()]),
-            virials_weight=unpack_value(subgrp["virials_weight"][()]),
-            config_type=unpack_value(subgrp["config_type"][()]),
-            pbc=unpack_value(subgrp["pbc"][()]),
-            cell=unpack_value(subgrp["cell"][()]),
+
+        atoms = Atoms(
+            numbers   = subgrp["atomic_numbers"][()],
+            positions = subgrp["positions"][()],
+            cell      = unpack_value(subgrp["cell"][()]),
+            pbc       = unpack_value(subgrp["pbc"][()]),
         )
-        atomic_data = AtomicData.from_config(
-            config, z_table=self.z_table, cutoff=self.r_max
+        atoms.calc = CachedCalc(
+            unpack_value(subgrp["energy"][()]),
+            unpack_value(subgrp["forces"][()])
         )
-        return atomic_data
+        graphs = self.converter.convert(atoms)
+
+        return graphs
 
 
 def unpack_value(value):

@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from typing  import Iterable, Optional
 
+import torch_geometric
+
 from torch_geometric.loader import DataLoader
 from torch_cluster import radius_graph
 
@@ -34,7 +36,6 @@ from nets import EquiformerV2_OC20
 
 from mace_data.hdf5_dataset import HDF5Dataset
 from mace_data.tools import get_atomic_number_table_from_zs
-from mace_data.tools import torch_geometric
 
 
 ModelEma = ModelEmaV2
@@ -57,7 +58,7 @@ def get_dataloaders(args):
         f"data-r{args.radius}/valid.h5", r_max=args.radius, z_table=z_table
     )
 
-    train_loader = torch_geometric.dataloader.DataLoader(
+    train_loader = torch_geometric.loader.DataLoader(
         dataset=train_set,
         batch_size=32,   
         shuffle=True,
@@ -65,7 +66,7 @@ def get_dataloaders(args):
         pin_memory=True,
         num_workers=10,
     )
-    valid_loader = torch_geometric.dataloader.DataLoader(
+    valid_loader = torch_geometric.loader.DataLoader(
         dataset=valid_set,
         batch_size=1,
         shuffle=True,
@@ -763,10 +764,11 @@ def train_one_epoch(args,
 
     for step, data in enumerate(data_loader):
         data = data.to(device)
-        pred_y, pred_dy = model(node_atom=data.z, pos=data.pos, batch=data.batch)
+
+        pred_y, pred_dy = model(data)
 
         loss_e = criterion(pred_y, data.y)
-        loss_f = criterion(pred_dy, data.dy)
+        loss_f = criterion(pred_dy, data['force'])
         loss = args.energy_weight * loss_e + args.force_weight * loss_f
 
         optimizer.zero_grad()
@@ -779,7 +781,7 @@ def train_one_epoch(args,
         energy_err = pred_y.detach() - data.y
         energy_err = torch.mean(torch.abs(energy_err)).item()
         mae_metrics['energy'].update(energy_err, n=pred_y.shape[0])
-        force_err = pred_dy.detach()- data.dy
+        force_err = pred_dy.detach()- data['force']
         force_err = torch.mean(torch.abs(force_err)).item()     # based on OC20 and TorchMD-Net, they average over x, y, z
         mae_metrics['force'].update(force_err, n=pred_dy.shape[0])
         
@@ -821,9 +823,6 @@ def evaluate(args,
     mae_metrics  = {'energy': AverageMeter(), 'force': AverageMeter()}
     
     start_time = time.perf_counter()
-
-    task_mean = model.task_mean
-    task_std = model.task_std
     
     with torch.no_grad():
             
@@ -832,16 +831,16 @@ def evaluate(args,
             data = data.to(device)
             pred_y, pred_dy = model(node_atom=data.z, pos=data.pos, batch=data.batch)
 
-            loss_e = criterion(pred_y, ((data.y - task_mean) / task_std))
-            loss_f = criterion(pred_dy, (data.dy / task_std))
+            loss_e = criterion(pred_y, data.y)
+            loss_f = criterion(pred_dy, data['force'])
             
             loss_metrics['energy'].update(loss_e.item(), n=pred_y.shape[0])
             loss_metrics['force'].update(loss_f.item(), n=pred_dy.shape[0])
             
-            energy_err = pred_y.detach() * task_std + task_mean - data.y
+            energy_err = pred_y.detach() - data.y
             energy_err = torch.mean(torch.abs(energy_err)).item()
             mae_metrics['energy'].update(energy_err, n=pred_y.shape[0])
-            force_err = pred_dy.detach() * task_std - data.dy
+            force_err = pred_dy.detach() - data['force']
             force_err = torch.mean(torch.abs(force_err)).item()     # based on OC20 and TorchMD-Net, they average over x, y, z
             mae_metrics['force'].update(force_err, n=pred_dy.shape[0])
             

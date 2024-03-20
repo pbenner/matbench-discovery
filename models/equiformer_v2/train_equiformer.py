@@ -63,7 +63,7 @@ def get_dataloaders(args):
         batch_size=32,   
         shuffle=True,
         drop_last=False,
-        pin_memory=True,
+        pin_memory=False,
         num_workers=10,
     )
     valid_loader = torch_geometric.loader.DataLoader(
@@ -71,7 +71,7 @@ def get_dataloaders(args):
         batch_size=1,
         shuffle=True,
         drop_last=False,
-        pin_memory=True,
+        pin_memory=False,
         num_workers=10,
     )
     return train_loader, valid_loader, valid_loader
@@ -563,7 +563,8 @@ def main(args):
     model = EquiformerV2_OC20(
         # First three arguments are not used
         None, None, None,
-        max_radius=args.radius)
+        max_radius=args.radius,
+        max_num_elements=95)
     _log.info(model)
 
     if args.checkpoint_path is not None:
